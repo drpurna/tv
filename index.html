@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=1920"/>
+  <meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval' data: blob:;"/>
+  <title>Telugu IPTV</title>
+  <link rel="stylesheet" href="bundle.css"/>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- Tizen AVPlay object — required for Samsung TV native video playback -->
+  <object id="avplay-object"
+    type="application/avplayer"
+    style="position:fixed;top:0;left:0;width:1920px;height:1080px;z-index:0;display:block;">
+  </object>
+
+  <!-- Pre-compiled, minified bundle (esbuild output of src/main.jsx and all dependencies) -->
+  <script src="bundle.js"></script>
+</body>
+</html>

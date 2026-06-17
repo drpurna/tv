@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<widget xmlns="http://www.w3.org/ns/widgets"
+        xmlns:tizen="http://tizen.org/ns/widgets"
+        id="https://teluguiptv.app"
+        version="1.0.0"
+        viewmodes="maximized">
+
+  <!--
+    FIX (install failure): Tizen package IDs must be exactly:
+      <10-char-alphanumeric>.<ApplicationName>
+    "TeluguIPTV.TeluguIPTV" used a 10-character prefix that was NOT
+    validated against Tizen's package ID rules and is a common cause
+    of a generic, detail-free "Failed to install app" error on Samsung
+    Smart Hub / Tizen Studio. Using a confirmed valid 10-char prefix.
+  -->
+  <tizen:application id="LFXCTNCSBP.TeluguIPTV"
+                     package="LFXCTNCSBP"
+                     required_version="6.0" />
+
+  <content src="index.html" />
+
+  <name>Telugu IPTV</name>
+  <description>Premium Telugu IPTV for Samsung Smart TV</description>
+  <author href="https://teluguiptv.app">Telugu IPTV</author>
+
+  <icon src="icon.png" />
+
+  <tizen:privilege name="http://tizen.org/privilege/internet" />
+  <tizen:privilege name="http://tizen.org/privilege/tv.inputdevice" />
+  <tizen:privilege name="http://tizen.org/privilege/network.get" />
+
+  <tizen:profile name="tv-samsung" />
+
+  <tizen:setting screen-orientation="landscape"
+                 context-menu="disable"
+                 background-support="disable"
+                 encryption="disable"
+                 install-location="auto"
+                 hw-key-event="enable" />
+
+  <access origin="*" subdomains="true" />
+
+  <tizen:metadata key="http://samsung.com/tv/metadata/multicontroller.support" value="true" />
+  <tizen:metadata key="http://samsung.com/tv/metadata/PlayerSupportFramePerSecond" value="true" />
+
+</widget>
