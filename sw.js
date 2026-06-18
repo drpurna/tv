@@ -1,119 +1,128 @@
 /**
- * sw.js — Service Worker  v3
+ * sw.js — Service Worker for TV+ IPTV
+ * Caches app shell for instant startup and offline capability.
+ * Does NOT cache M3U playlist content (handled by IndexedDB).
  *
- * P0-3 FIX: M3U / playlist URLs are NEVER cached.
- *   v3 bump → old v2 caches (which may have stale M3U data) are
- *   purged on activate. Any domain that serves playlist content is
- *   explicitly in the never-cache list.
- *
- * Cache strategies:
- *   App shell (index.html, JS, worker) → Cache-First (versioned)
- *   Playlist / M3U / CF workers        → Network-Only  ← key fix
- *   Channel logo images                → Stale-While-Revalidate
- *   Everything else                    → Network-First, cache fallback
+ * Strategy:
+ *   App shell (index.html, worker files) → Cache First
+ *   M3U/playlist URLs → Network Only (fresh data always preferred)
+ *   Logo images → Stale-While-Revalidate (show cached, update in bg)
  */
 
-const SHELL_VER  = 'tvplus-shell-v3';   // bump removes old cached M3U data
-const LOGO_VER   = 'tvplus-logos-v1';
-const KEEP_CACHES = [SHELL_VER, LOGO_VER];
+const CACHE_NAME    = 'tvplus-shell-v1';
+const WORKER_CACHE  = 'tvplus-workers-v1';
+const LOGO_CACHE    = 'tvplus-logos-v1';
 
-const SHELL_FILES = ['./', './index.html', './m3u-worker.js', './bundle.js', './bundle.css'];
-const SHELL_PATHS = ['/index.html', '/m3u-worker.js', '/bundle.js', '/bundle.css'];
-
-/* ── Never-cache: any URL matching these patterns goes Network-Only ── */
-const NEVER_CACHE = [
-  /\.m3u($|\?)/i,
-  /iptv-org\.github\.io/,
-  /raw\.githubusercontent\.com/,
-  /jioplaylist\./,
-  /joinus-apiworker\.workers\.dev/,
-  /yupptv\./,
-  /yecic62314\.workers\.dev/,
-  /corsproxy\.io/,
-  /allorigins\.win/,
-  /cors-anywhere/,
+const SHELL_FILES = [
+  '/',
+  '/index.html',
+  '/m3u-worker.js',
 ];
 
-const neverCache = (url) => NEVER_CACHE.some(p => p.test(url.href));
-const isLogo     = (url) => /\.(png|jpe?g|svg|webp|ico)$/i.test(url.pathname) && !neverCache(url);
-const isShell    = (url) => SHELL_PATHS.some(p => url.pathname.endsWith(p)) || url.pathname === '/';
-
-/* ── Install ── */
-self.addEventListener('install', e => {
-  e.waitUntil(
-    caches.open(SHELL_VER)
-      .then(c => c.addAll(SHELL_FILES))
+// ── Install: cache shell ──────────────────────────────────────
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then(cache => cache.addAll(SHELL_FILES))
       .then(() => self.skipWaiting())
       .catch(() => self.skipWaiting())
   );
 });
 
-/* ── Activate: delete ALL old caches so stale M3U data is gone ── */
-self.addEventListener('activate', e => {
-  e.waitUntil(
+// ── Activate: clean old caches ────────────────────────────────
+self.addEventListener('activate', (event) => {
+  const KEEP = [CACHE_NAME, WORKER_CACHE, LOGO_CACHE];
+  event.waitUntil(
     caches.keys()
       .then(keys => Promise.all(
-        keys.filter(k => !KEEP_CACHES.includes(k)).map(k => caches.delete(k))
+        keys.filter(k => !KEEP.includes(k)).map(k => caches.delete(k))
       ))
       .then(() => self.clients.claim())
   );
 });
 
-/* ── Fetch ── */
-self.addEventListener('fetch', e => {
-  const { request } = e;
+// ── Fetch: routing strategy ───────────────────────────────────
+self.addEventListener('fetch', (event) => {
+  const { request } = event;
+  const url = new URL(request.url);
+
+  // Skip non-GET
   if (request.method !== 'GET') return;
 
-  let url;
-  try { url = new URL(request.url); } catch { return; }
-  if (!url.hostname || url.protocol === '$') return; // Tizen internal
+  // M3U/playlist files — network only (never cache raw M3U)
+  if (url.pathname.endsWith('.m3u') || url.hostname.includes('iptv-org')) {
+    return; // let browser handle normally
+  }
 
-  /* P0-3: playlist / M3U → pure network, touch no cache */
-  if (neverCache(url)) {
-    e.respondWith(fetch(request).catch(() => new Response('', { status: 503 })));
+  // Tizen WebAPI — skip entirely
+  if (url.protocol === '$' || url.hostname === '') return;
+
+  // Channel logo images — stale-while-revalidate
+  if (isLogoRequest(url)) {
+    event.respondWith(staleWhileRevalidate(request, LOGO_CACHE));
     return;
   }
 
-  if (isShell(url)) {
-    e.respondWith(cacheFirst(request, SHELL_VER));
+  // App shell — cache first
+  if (isShellRequest(url)) {
+    event.respondWith(cacheFirst(request, CACHE_NAME));
     return;
   }
 
-  if (isLogo(url)) {
-    e.respondWith(staleWhileRevalidate(request, LOGO_VER));
-    return;
-  }
-
-  e.respondWith(networkFirst(request, SHELL_VER));
+  // Everything else — network first with cache fallback
+  event.respondWith(networkFirst(request, CACHE_NAME));
 });
 
-async function cacheFirst(req, name) {
-  const hit = await caches.match(req);
-  if (hit) return hit;
-  try {
-    const res = await fetch(req);
-    if (res.ok) (await caches.open(name)).put(req, res.clone());
-    return res;
-  } catch { return new Response('Offline', { status: 503 }); }
+function isLogoRequest(url) {
+  return /\.(png|jpg|jpeg|svg|webp|ico)$/i.test(url.pathname);
 }
 
-async function networkFirst(req, name) {
+function isShellRequest(url) {
+  return url.pathname === '/' ||
+         url.pathname === '/index.html' ||
+         url.pathname === '/m3u-worker.js';
+}
+
+async function cacheFirst(request, cacheName) {
+  const cached = await caches.match(request);
+  if (cached) return cached;
   try {
-    const res = await fetch(req);
-    if (res.ok) (await caches.open(name)).put(req, res.clone());
-    return res;
+    const response = await fetch(request);
+    if (response.ok) {
+      const cache = await caches.open(cacheName);
+      cache.put(request, response.clone());
+    }
+    return response;
   } catch {
-    return (await caches.match(req)) || new Response('Offline', { status: 503 });
+    return new Response('Offline', { status: 503 });
   }
 }
 
-async function staleWhileRevalidate(req, name) {
-  const cache = await caches.open(name);
-  const hit   = await cache.match(req);
-  const fresh = fetch(req).then(r => { if (r.ok) cache.put(req, r.clone()); return r; }).catch(() => null);
-  return hit || (await fresh) || new Response('', { status: 404 });
+async function networkFirst(request, cacheName) {
+  try {
+    const response = await fetch(request);
+    if (response.ok) {
+      const cache = await caches.open(cacheName);
+      cache.put(request, response.clone());
+    }
+    return response;
+  } catch {
+    const cached = await caches.match(request);
+    return cached || new Response('Offline', { status: 503 });
+  }
 }
 
-self.addEventListener('message', e => {
-  if (e.data === 'SKIP_WAITING') self.skipWaiting();
+async function staleWhileRevalidate(request, cacheName) {
+  const cache  = await caches.open(cacheName);
+  const cached = await cache.match(request);
+  const fetchPromise = fetch(request).then(response => {
+    if (response.ok) cache.put(request, response.clone());
+    return response;
+  }).catch(() => null);
+  return cached || await fetchPromise || new Response('', { status: 404 });
+}
+
+// Message handler — allow main thread to skip waiting
+self.addEventListener('message', (event) => {
+  if (event.data === 'SKIP_WAITING') self.skipWaiting();
 });

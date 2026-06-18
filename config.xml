@@ -5,17 +5,9 @@
         version="1.0.0"
         viewmodes="maximized">
 
-  <!--
-    FIX (install failure): Tizen package IDs must be exactly:
-      <10-char-alphanumeric>.<ApplicationName>
-    "TeluguIPTV.TeluguIPTV" used a 10-character prefix that was NOT
-    validated against Tizen's package ID rules and is a common cause
-    of a generic, detail-free "Failed to install app" error on Samsung
-    Smart Hub / Tizen Studio. Using a confirmed valid 10-char prefix.
-  -->
-  <tizen:application id="LFXCTNCSBP.TeluguIPTV"
-                     package="LFXCTNCSBP"
-                     required_version="6.0" />
+  <tizen:application id="TeluguIPTV.TeluguIPTV"
+                     package="TeluguIPTV"
+                     required_version="9.0" />
 
   <content src="index.html" />
 
@@ -23,7 +15,10 @@
   <description>Premium Telugu IPTV for Samsung Smart TV</description>
   <author href="https://teluguiptv.app">Telugu IPTV</author>
 
-  <icon src="icon.png" />
+  <icon src="icon.png" width="117" height="117" />
+
+  <!-- Samsung TV icons -->
+  <icon src="icon_hd.png" width="512" height="423" />
 
   <tizen:privilege name="http://tizen.org/privilege/internet" />
   <tizen:privilege name="http://tizen.org/privilege/tv.inputdevice" />
